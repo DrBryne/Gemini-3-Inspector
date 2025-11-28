@@ -483,7 +483,7 @@ ${format}`;
       </div>
 
       {/* COLUMN 2: Prompt Engineering (Middle Wide) */}
-      <div className="w-[500px] lg:w-[600px] xl:w-[700px] 2xl:w-[800px] flex flex-col h-full border-r border-slate-800 bg-slate-950/30 shrink-0 z-10">
+      <div className="w-[600px] lg:w-[800px] xl:w-[900px] 2xl:w-[1100px] flex flex-col h-full border-r border-slate-800 bg-slate-950/30 shrink-0 z-10">
          <div className="p-6 border-b border-slate-800/50 flex justify-between items-center bg-slate-950/80 backdrop-blur-sm">
             <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
@@ -571,7 +571,7 @@ ${format}`;
       </div>
 
       {/* COLUMN 3: Results (Right Fluid) */}
-      <div className="flex-1 flex flex-col h-full bg-slate-900 relative overflow-hidden min-w-[400px]">
+      <div className="flex-1 flex flex-col h-full bg-slate-900 relative overflow-hidden min-w-[300px]">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div>
