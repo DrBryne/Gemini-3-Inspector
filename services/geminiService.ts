@@ -10,18 +10,19 @@ export const detectionSchema = {
         type: Type.STRING,
         enum: ["DEFORMATION & DENTS", "MISSING OR LOOSE BOLTS", "HOLES"]
       },
-      severity: {
-        type: Type.STRING,
-        enum: ["High", "Medium", "Low"]
+      confidence: {
+        type: Type.NUMBER,
+        description: "Confidence score between 0.0 (low certainty) and 1.0 (high certainty) that the defect exists."
       },
       description: { type: Type.STRING },
       imageIndex: { type: Type.INTEGER },
       box_2d: {
         type: Type.ARRAY,
-        items: { type: Type.NUMBER }
+        items: { type: Type.NUMBER },
+        description: "Bounding box coordinates in [ymin, xmin, ymax, xmax] format on a 1000x1000 scale."
       }
     },
-    required: ["label", "severity", "description", "imageIndex", "box_2d"]
+    required: ["label", "confidence", "description", "imageIndex", "box_2d"]
   }
 };
 
@@ -63,6 +64,7 @@ export const generateContentWithGemini = async (
       },
       config: {
         temperature: config.temperature,
+        topP: config.topP,
         thinkingConfig: { 
           thinkingBudget: budget 
         },

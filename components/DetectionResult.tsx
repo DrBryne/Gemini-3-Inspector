@@ -33,31 +33,33 @@ export const DetectionResult: React.FC<DetectionResultProps> = ({ detections, im
     return map;
   }, [detections, images]);
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-        case 'High': return 'text-red-400 border-red-500/50 bg-red-500/10 shadow-[0_0_10px_rgba(248,113,113,0.3)]';
-        case 'Medium': return 'text-orange-400 border-orange-500/50 bg-orange-500/10';
-        case 'Low': return 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10';
-        default: return 'text-blue-400 border-blue-500/50 bg-blue-500/10';
-    }
+  // Confidence color mapping: >0.85 (High), >0.6 (Medium), else (Low)
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.85) return 'text-red-400 border-red-500/50 bg-red-500/10 shadow-[0_0_10px_rgba(248,113,113,0.3)]';
+    if (confidence >= 0.6) return 'text-orange-400 border-orange-500/50 bg-orange-500/10';
+    return 'text-yellow-400 border-yellow-500/50 bg-yellow-500/10';
   };
 
-  const getSeverityBorder = (severity: string) => {
-    switch (severity) {
-        case 'High': return 'border-red-500';
-        case 'Medium': return 'border-orange-500';
-        case 'Low': return 'border-emerald-500';
-        default: return 'border-blue-500';
-    }
+  const getConfidenceBorder = (confidence: number) => {
+    if (confidence >= 0.85) return 'border-red-500';
+    if (confidence >= 0.6) return 'border-orange-500';
+    return 'border-yellow-500';
   };
 
-  const getSeverityBadge = (severity: string) => {
-      switch (severity) {
-          case 'High': return 'bg-red-500 text-white';
-          case 'Medium': return 'bg-orange-500 text-white';
-          case 'Low': return 'bg-emerald-500 text-white';
-          default: return 'bg-blue-500 text-white';
-      }
+  const getConfidenceBadge = (confidence: number) => {
+    if (confidence >= 0.85) return 'bg-red-500 text-white';
+    if (confidence >= 0.6) return 'bg-orange-500 text-white';
+    return 'bg-yellow-500 text-white';
+  };
+
+  const formatConfidence = (score: number) => {
+      return `${Math.round(score * 100)}%`;
+  };
+
+  const getConfidenceLabel = (score: number) => {
+      if (score >= 0.85) return "HIGH CONFIDENCE";
+      if (score >= 0.6) return "MEDIUM CONFIDENCE";
+      return "LOW CONFIDENCE";
   };
 
   const getBoxStyle = (box: [number, number, number, number]) => {
@@ -69,19 +71,24 @@ export const DetectionResult: React.FC<DetectionResultProps> = ({ detections, im
      ymax = Number(ymax);
      xmax = Number(xmax);
 
-     // Heuristic: If coordinates look like 0-1000 scale (Gemini default often), normalize them
-     if (ymin > 1.5 || xmin > 1.5 || ymax > 1.5 || xmax > 1.5) {
-         ymin /= 1000;
-         xmin /= 1000;
-         ymax /= 1000;
-         xmax /= 1000;
+     // Heuristic: If all coordinates are very small (<= 1.5), assume they are normalized 0-1
+     // Otherwise, assume they are 0-1000 scale
+     if (ymin <= 1.5 && xmin <= 1.5 && ymax <= 1.5 && xmax <= 1.5) {
+         // Normalized 0-1
+         return {
+           top: `${ymin * 100}%`,
+           left: `${xmin * 100}%`,
+           width: `${(xmax - xmin) * 100}%`,
+           height: `${(ymax - ymin) * 100}%`,
+         };
      }
-
+     
+     // 0-1000 scale
      return {
-       top: `${ymin * 100}%`,
-       left: `${xmin * 100}%`,
-       width: `${(xmax - xmin) * 100}%`,
-       height: `${(ymax - ymin) * 100}%`,
+       top: `${ymin / 10}%`,
+       left: `${xmin / 10}%`,
+       width: `${(xmax - xmin) / 10}%`,
+       height: `${(ymax - ymin) / 10}%`,
      };
   };
 
@@ -183,8 +190,8 @@ export const DetectionResult: React.FC<DetectionResultProps> = ({ detections, im
               {currentDefects.map((det, dIdx) => {
                 const uniqueId = `${safeIndex}-${dIdx}`;
                 const isHovered = hoveredId === uniqueId;
-                const borderColor = getSeverityBorder(det.severity);
-                const badgeColor = getSeverityBadge(det.severity);
+                const borderColor = getConfidenceBorder(det.confidence);
+                const badgeColor = getConfidenceBadge(det.confidence);
                 
                 return (
                   <div 
@@ -205,7 +212,7 @@ export const DetectionResult: React.FC<DetectionResultProps> = ({ detections, im
                      `}>
                         <span>{det.label}</span>
                         <span className="w-1 h-3 border-l border-white/30 mx-0.5"></span>
-                        <span className="uppercase tracking-tighter opacity-90">{det.severity}</span>
+                        <span className="uppercase tracking-tighter opacity-90">{formatConfidence(det.confidence)}</span>
                      </div>
                   </div>
                 );
@@ -222,7 +229,7 @@ export const DetectionResult: React.FC<DetectionResultProps> = ({ detections, im
                     {currentDefects.map((det, dIdx) => {
                         const uniqueId = `${safeIndex}-${dIdx}`;
                         const isHovered = hoveredId === uniqueId;
-                        const cardStyle = getSeverityColor(det.severity);
+                        const cardStyle = getConfidenceColor(det.confidence);
 
                         return (
                         <div 
@@ -241,12 +248,23 @@ export const DetectionResult: React.FC<DetectionResultProps> = ({ detections, im
                                 {det.label}
                                 </span>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border
-                                    ${det.severity === 'High' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 
-                                    det.severity === 'Medium' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 
-                                    'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}
+                                    ${det.confidence >= 0.85 ? 'bg-red-500/20 text-red-400 border-red-500/30' : 
+                                    det.confidence >= 0.6 ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 
+                                    'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}
                                 `}>
-                                {det.severity}
+                                {formatConfidence(det.confidence)}
                                 </span>
+                            </div>
+                            <div className="mb-2">
+                                <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                                    <div 
+                                        className={`h-full rounded-full transition-all duration-500 ${det.confidence >= 0.85 ? 'bg-red-500' : det.confidence >= 0.6 ? 'bg-orange-500' : 'bg-yellow-500'}`}
+                                        style={{ width: `${det.confidence * 100}%` }}
+                                    ></div>
+                                </div>
+                                <div className="flex justify-between mt-1">
+                                    <span className="text-[9px] text-slate-500 uppercase font-medium">{getConfidenceLabel(det.confidence)}</span>
+                                </div>
                             </div>
                             <p className={`text-sm leading-relaxed ${isHovered ? 'text-slate-200' : 'text-slate-400'}`}>
                                 {det.description}

@@ -2,71 +2,12 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { UploadedImage, SendingStatus, Detection, ThinkingLevel } from './types';
 import { processFile } from './utils/fileUtils';
 import { generateContentWithGemini, detectionSchema } from './services/geminiService';
+import { getLatestFromHistory, HISTORY_KEYS } from './services/storageService';
 import { ImagePreviewGrid } from './components/ImagePreviewGrid';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { DetectionResult } from './components/DetectionResult';
 
-const DEFAULT_ROLE = `You are an Expert Highway Infrastructure Inspection AI. Your task is to analyze a set of input images depicting W-beam guardrail systems. 
-
-Your goal is to identify and localize defects that compromise structural integrity or safety. Operate with high sensitivity; flag any suspected anomalies even if image resolution prevents absolute confirmation.`;
-
-const DEFAULT_CRITERIA = `Scan the images for the following specific issues:
-
-1. DEFORMATION & DENTS
-   - Scan upper and lower silhouette edges for interruptions, jaggedness, or sudden vertical deviations.
-   - Analyze light reflections: Look for "zig-zags" or sudden breaks in the linear reflection patterns on the rail surface.
-   
-2. MISSING OR LOOSE BOLTS
-   - Inspect the overlap of rail segments.
-   - Flag visible holes missing bolt heads.
-   - Flag bolt heads protruding significantly further than neighbors or casting irregular/drooping shadows.
-
-3. HOLES
-   - Flag irregular, jagged, or rust-rimmed holes that indicate tears or rust-through.`;
-
-const DEFAULT_ATTRIBUTES = `When reporting a defect, populate the fields as follows:
-- **Severity:** 
-  - "High": Critical safety hazard (e.g., missing bolts, large tears, sharp jagged edges).
-  - "Medium": Noticeable structural issue (e.g., deep dents, rust-through).
-  - "Low": Minor or cosmetic anomaly (e.g., shallow surface deviations).
-- **Description:** A concise explanation of the visual cue observed (e.g., "Top edge silhouette appears jagged," or "Shadow indicates protruding bolt.").`;
-
-const DEFAULT_FORMAT = `You must return the results as a single, valid JSON array. Follow these rules strictly:
-
-1. **Batch Processing:** Use the \`imageIndex\` (0-based) to indicate which image in the set the detection belongs to.
-2. **Coordinates:** \`box_2d\` must be [ymin, xmin, ymax, xmax] using normalized coordinates (0 to 1).
-3. **Format:** Output **ONLY** raw JSON. Do not include Markdown formatting (no \`\`\`json ... \`\`\` blocks), no explanatory text, and no chatter.`;
-
-const STORAGE_KEYS = {
-  ROLE: "gemini_analyzer_role",
-  CRITERIA: "gemini_analyzer_criteria",
-  ATTRIBUTES: "gemini_analyzer_attributes",
-  FORMAT: "gemini_analyzer_format"
-};
-
 const MAX_HISTORY = 10;
-
-// Hook for persistent string state
-const usePersistentString = (key: string, defaultValue: string) => {
-    const [value, setValue] = useState(() => {
-         try {
-             return localStorage.getItem(key) ?? defaultValue;
-         } catch (e) {
-             console.warn(`Failed to load ${key}`, e);
-             return defaultValue;
-         }
-    });
-
-    useEffect(() => {
-        try {
-            localStorage.setItem(key, value);
-        } catch (e) {
-            console.warn(`Failed to save ${key}`, e);
-        }
-    }, [key, value]);
-
-    return [value, setValue] as const;
-};
 
 // Hook for history management
 const useHistory = (key: string, currentValue: string) => {
@@ -214,7 +155,7 @@ const PromptSection: React.FC<PromptSectionProps> = ({
                         onKeyDown={onKeyDown}
                         disabled={isLoading}
                         className={`w-full ${heightClass} p-4 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 resize-y font-mono text-base leading-relaxed transition-all shadow-inner`}
-                        placeholder={placeholder}
+                        placeholder={placeholder || "Enter prompt here..."}
                         autoFocus
                     />
                  </div>
@@ -224,24 +165,22 @@ const PromptSection: React.FC<PromptSectionProps> = ({
 };
 
 const App: React.FC = () => {
-  // Initialize prompt sections with robust persistent hooks
-  const [role, setRole] = usePersistentString(STORAGE_KEYS.ROLE, DEFAULT_ROLE);
-  const [criteria, setCriteria] = usePersistentString(STORAGE_KEYS.CRITERIA, DEFAULT_CRITERIA);
-  const [attributes, setAttributes] = usePersistentString(STORAGE_KEYS.ATTRIBUTES, DEFAULT_ATTRIBUTES);
-  const [format, setFormat] = usePersistentString(STORAGE_KEYS.FORMAT, DEFAULT_FORMAT);
+  // Load configuration ONCE on mount from HISTORY
+  const [role, setRole] = useState(() => getLatestFromHistory(HISTORY_KEYS.ROLE));
+  const [criteria, setCriteria] = useState(() => getLatestFromHistory(HISTORY_KEYS.CRITERIA));
+  const [outputConfig, setOutputConfig] = useState(() => getLatestFromHistory(HISTORY_KEYS.OUTPUT_CONFIG));
 
   // Initialize History Hooks
-  const roleHistory = useHistory(STORAGE_KEYS.ROLE, role);
-  const criteriaHistory = useHistory(STORAGE_KEYS.CRITERIA, criteria);
-  const attributesHistory = useHistory(STORAGE_KEYS.ATTRIBUTES, attributes);
-  const formatHistory = useHistory(STORAGE_KEYS.FORMAT, format);
+  // These hooks will manage the array of versions and handle saving to localStorage on commit
+  const roleHistory = useHistory(HISTORY_KEYS.ROLE, role);
+  const criteriaHistory = useHistory(HISTORY_KEYS.CRITERIA, criteria);
+  const outputConfigHistory = useHistory(HISTORY_KEYS.OUTPUT_CONFIG, outputConfig);
 
   // Visibility state for sections
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     role: false,
     criteria: true,
-    attributes: false,
-    format: false
+    outputConfig: false
   });
 
   const [images, setImages] = useState<UploadedImage[]>([]);
@@ -253,6 +192,7 @@ const App: React.FC = () => {
   // Model Configuration State
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>("LOW");
   const [temperature, setTemperature] = useState<number>(1.0); 
+  const [topP, setTopP] = useState<number>(0.95);
   
   // View State
   const [viewMode, setViewMode] = useState<'visual' | 'raw' | 'debug'>('visual');
@@ -291,16 +231,11 @@ ${role}
 ## VISUAL DEFECT CRITERIA
 ${criteria}
 
-## ATTRIBUTE DEFINITIONS
-${attributes}
-
-## OUTPUT FORMAT INSTRUCTIONS
-${format}`;
+## OUTPUT CONFIGURATION
+${outputConfig}`;
   };
 
   const prepareDebugInfo = (fullPrompt: string) => {
-      // Reconstruct the payload object for debug display
-      // We manually build this to match what the service sends, but replacing base64 data
       const parts: any[] = images.map(img => ({
         inlineData: {
           mimeType: img.mimeType,
@@ -317,6 +252,7 @@ ${format}`;
           },
           config: {
               temperature: temperature,
+              topP: topP,
               thinkingConfig: { 
                   thinkingBudget: thinkingLevel === 'HIGH' ? 16000 : 2000
               },
@@ -335,11 +271,10 @@ ${format}`;
       return;
     }
     
-    // Commit current prompts to history before running
+    // 1. Commit to History (This effectively saves to storage)
     roleHistory.commit();
     criteriaHistory.commit();
-    attributesHistory.commit();
-    formatHistory.commit();
+    outputConfigHistory.commit();
 
     setStatus(SendingStatus.LOADING);
     setResponseText("");
@@ -351,11 +286,11 @@ ${format}`;
     try {
       const text = await generateContentWithGemini(fullPrompt, images, {
         thinkingLevel,
-        temperature
+        temperature,
+        topP
       });
       setResponseText(text);
 
-      // Parse JSON directly since we are using controlled generation
       try {
         const json = JSON.parse(text);
         
@@ -363,7 +298,6 @@ ${format}`;
             setParsedDetections(json as Detection[]);
             setViewMode('visual');
         } else {
-            // Should not happen with current schema, but handle object wrapper just in case
             if (json.items && Array.isArray(json.items)) {
                 setParsedDetections(json.items as Detection[]);
                 setViewMode('visual');
@@ -475,6 +409,14 @@ ${format}`;
                         </div>
                         <input type="range" min="0" max="2.0" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} disabled={isLoading} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
                     </div>
+
+                    <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="text-[10px] font-medium text-slate-500 uppercase">Top P</label>
+                            <span className="text-[10px] font-mono text-emerald-400">{topP.toFixed(2)}</span>
+                        </div>
+                        <input type="range" min="0" max="1.0" step="0.05" value={topP} onChange={(e) => setTopP(parseFloat(e.target.value))} disabled={isLoading} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                    </div>
                 </div>
             </div>
 
@@ -522,29 +464,16 @@ ${format}`;
             />
 
             <PromptSection 
-                id="attributes"
-                label="Attribute Definitions" 
-                value={attributes} 
-                setValue={setAttributes}
-                isExpanded={expandedSections.attributes}
+                id="outputConfig"
+                label="Output Configuration" 
+                value={outputConfig} 
+                setValue={setOutputConfig}
+                isExpanded={expandedSections.outputConfig}
                 toggleSection={toggleSection}
                 isLoading={isLoading}
                 onKeyDown={handleKeyDown}
-                history={attributesHistory.history}
-                heightClass="h-64" 
-            />
-
-            <PromptSection 
-                id="format"
-                label="Output Format Instructions" 
-                value={format} 
-                setValue={setFormat}
-                isExpanded={expandedSections.format}
-                toggleSection={toggleSection}
-                isLoading={isLoading}
-                onKeyDown={handleKeyDown}
-                history={formatHistory.history}
-                heightClass="h-64" 
+                history={outputConfigHistory.history}
+                heightClass="h-[500px]" 
             />
          </div>
 

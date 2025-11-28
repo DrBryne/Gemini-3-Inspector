@@ -19,7 +19,7 @@ export interface GenerationResponse {
 
 export interface Detection {
   label: "DEFORMATION & DENTS" | "MISSING OR LOOSE BOLTS" | "HOLES";
-  severity: "High" | "Medium" | "Low";
+  confidence: number;
   description: string;
   imageIndex: number;
   box_2d: [number, number, number, number]; // ymin, xmin, ymax, xmax
@@ -30,4 +30,5 @@ export type ThinkingLevel = "LOW" | "HIGH";
 export interface GenerationConfig {
   thinkingLevel: ThinkingLevel;
   temperature: number;
+  topP: number;
 }
