@@ -1,0 +1,5 @@
+{
+  "name": "Gemini 3 Image Analyzer",
+  "description": "Desktop-optimized image analysis tool using Gemini 3 Pro.",
+  "requestFramePermissions": []
+}
